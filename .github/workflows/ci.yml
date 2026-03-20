@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.16'
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@test.com"
+          git config --global user.name "CI"
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test -race ./...
