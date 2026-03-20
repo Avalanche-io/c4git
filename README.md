@@ -67,7 +67,7 @@ patterns:
   - "*.usdz"
 ```
 
-The store at `.c4/store` is a tree store -- a content-addressed directory layout used by the c4 library. It is the same store format used by `c4sh` and `c4d`, so content written by any tool is available to all of them.
+The store at `.c4/store` is a tree store -- a content-addressed directory layout used by the c4 library. It is the same store format used by all c4 ecosystem tools (`c4`, `c4sh`, `c4py`), so content written by any tool is available to all of them.
 
 `c4git init` also:
 - Creates `.c4/store` if it doesn't exist
@@ -99,6 +99,10 @@ The store at `.c4/store` is a tree store -- a content-addressed directory layout
 | Complexity | Minimal | Moderate | High | High |
 | Content standard | SMPTE ST 2114 | None | None | None |
 | Offline support | Full | Partial | Full | None |
+
+## Design Decisions
+
+See the [FAQ](https://github.com/Avalanche-io/c4/blob/main/docs/faq.md) for design decisions including SHA-512 permanence, the c4m format, and content store scaling.
 
 ## License
 
