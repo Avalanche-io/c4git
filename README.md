@@ -2,14 +2,16 @@
 
 Git clean/smudge filter that turns git into a media asset version control system using C4 IDs ([SMPTE ST 2114:2017](https://ieeexplore.ieee.org/document/8255805)).
 
-Large files are replaced with their 90-character C4 ID on commit and rehydrated from any configured store on checkout. Artists don't need to know it's happening.
+Large files are replaced with their 90-byte C4 ID on commit and restored from any configured store on checkout. Artists don't need to know it's happening.
+
+## Install
+
+c4git is part of the [c4 toolkit](https://github.com/Avalanche-io/c4).
+See the c4 README for installation instructions.
 
 ## Quick Start
 
 ```bash
-# Install
-go install github.com/Avalanche-io/c4git/cmd/c4git@latest
-
 # Initialize in your repo
 cd my-project
 c4git init
@@ -21,18 +23,22 @@ c4git init
 
 c4git uses git's native [clean/smudge filter](https://git-scm.com/book/en/v2/Customizing-Git-Git-Attributes) mechanism:
 
-- **Clean** (on commit): Computes the C4 ID of the file, stores the content in a configured backing store, replaces the file in git with the 90-character C4 ID.
-- **Smudge** (on checkout): Reads the C4 ID, fetches the content from the backing store, writes it to the working tree.
+- **Clean** (on `git add`): Computes the C4 ID of the file, stores the original content in the backing store, and writes a bare 90-byte C4 ID to git. No newline, no prefix -- exactly 90 characters of base58-encoded SHA-512 hash.
+- **Smudge** (on `git checkout`): Reads the 90-byte C4 ID from the git blob, fetches the original content from the store, and writes it to the working tree. If the content is not in the store, the bare ID passes through unchanged.
+
+The clean filter is idempotent: if the input is already a 90-byte C4 ID (or 91 bytes with a trailing newline), it passes through without re-storing.
 
 ```
 Working Tree          Git Repository         Backing Store
-┌──────────┐   clean   ┌──────────┐   store   ┌──────────┐
-│ hero.exr │ ───────→ │ c43zYc.. │ ───────→ │ hero.exr │
-│ (200 MB) │          │ (90 B)   │          │ (200 MB) │
-└──────────┘          └──────────┘          └──────────┘
-      ↑       smudge        │       fetch        │
-      └─────────────────────┘ ←──────────────────┘
++-----------+   clean   +-----------+   store   +-----------+
+| hero.exr  | --------> | c43zYc..  | --------> | hero.exr  |
+| (200 MB)  |           | (90 B)    |           | (200 MB)  |
++-----------+           +-----------+           +-----------+
+      ^        smudge         |        fetch         |
+      +----------------------------------------------|
 ```
+
+Every commit that touches a managed file stores only 90 bytes in git. The actual content lives in `.c4/store`, a local directory-based content store shared with the rest of the c4 toolkit (`c4`, `c4sh`). Because content is addressed by its C4 ID, identical files across branches, repos, or machines are automatically deduplicated.
 
 ## Configuration
 
@@ -42,12 +48,9 @@ Working Tree          Git Repository         Backing Store
 # .c4git.yaml
 stores:
   - type: directory
-    path: .c4store/       # Local store (default)
+    path: .c4/store       # Local tree store (default)
 
-# Files larger than this are offloaded
-threshold: 1MB
-
-# File patterns to always offload (in addition to threshold)
+# File patterns to manage via C4
 patterns:
   - "*.exr"
   - "*.dpx"
@@ -61,38 +64,26 @@ patterns:
   - "*.usdz"
 ```
 
-### Backing Stores
+The store at `.c4/store` is a tree store -- a content-addressed directory layout used by the c4 library. It is the same store format used by `c4sh` and `c4d`, so content written by any tool is available to all of them.
 
-c4git is storage-agnostic. Configure one or more stores:
-
-```yaml
-stores:
-  # Local directory (simplest, works offline)
-  - type: directory
-    path: /shared/c4store/
-
-  # S3 bucket
-  - type: s3
-    bucket: studio-c4-assets
-    region: us-west-2
-
-  # c4d instance (local or remote)
-  - type: c4d
-    address: c4d.local:4444
-
-  # Multiple stores for redundancy — fetch from fastest available
-```
+`c4git init` also:
+- Creates `.c4/store` if it doesn't exist
+- Adds `.c4` to `.gitignore` (the store is never committed)
+- Writes `.gitattributes` entries mapping each pattern to the `c4` filter
+- Configures git's `filter.c4.clean`, `filter.c4.smudge`, and `filter.c4.required` settings
 
 ## Commands
 
-```bash
-c4git init          # Configure repo for c4git
-c4git status        # Show managed files and store status
-c4git fetch         # Pre-fetch all managed files from stores
-c4git push          # Push local store contents to remote stores
-c4git verify        # Verify working tree files against C4 IDs
-c4git gc            # Remove unreferenced objects from local store
-```
+| Command | Description |
+|---|---|
+| `c4git init` | Configure the current git repo for c4git |
+| `c4git clean` | Clean filter (stdin/stdout, called by git) |
+| `c4git smudge` | Smudge filter (stdin/stdout, called by git) |
+| `c4git status` | Show managed files and store status (ok/missing) |
+| `c4git verify` | Verify working tree files against committed C4 IDs |
+| `c4git gc` | Show unreferenced objects in the local store (dry run) |
+| `c4git gc --force` | Remove unreferenced objects from the local store |
+| `c4git version` | Print version |
 
 ## Comparison
 
@@ -108,4 +99,4 @@ c4git gc            # Remove unreferenced objects from local store
 
 ## License
 
-Apache 2.0 — see [LICENSE](./LICENSE).
+Apache 2.0 -- see [LICENSE](./LICENSE).

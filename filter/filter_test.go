@@ -6,26 +6,49 @@ import (
 	"testing"
 
 	"github.com/Avalanche-io/c4"
-	"github.com/Avalanche-io/c4git/store"
+	c4store "github.com/Avalanche-io/c4/store"
 )
 
-func tmpStore(t *testing.T) store.PrefixedFolder {
+func tmpStore(t *testing.T) *c4store.TreeStore {
 	t.Helper()
-	return store.PrefixedFolder(t.TempDir())
+	s, err := c4store.NewTreeStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func TestCleanProducesExactly90Bytes(t *testing.T) {
+	s := tmpStore(t)
+
+	var out bytes.Buffer
+	if err := Clean(strings.NewReader("hello world"), &out, s); err != nil {
+		t.Fatal(err)
+	}
+
+	if out.Len() != 90 {
+		t.Fatalf("clean output is %d bytes, want exactly 90", out.Len())
+	}
+	if _, err := c4.Parse(out.String()); err != nil {
+		t.Fatalf("clean output is not a valid C4 ID: %v", err)
+	}
 }
 
 func TestCleanSmudgeRoundTrip(t *testing.T) {
 	s := tmpStore(t)
 	original := "This is a large media file with some binary content \x00\x01\x02"
 
-	// Clean: content → C4 ID
+	// Clean: content → bare C4 ID (90 bytes)
 	var cleanOut bytes.Buffer
 	if err := Clean(strings.NewReader(original), &cleanOut, s); err != nil {
 		t.Fatal(err)
 	}
-	idStr := strings.TrimSpace(cleanOut.String())
+	idStr := cleanOut.String()
 
-	// Verify it's a valid C4 ID.
+	if len(idStr) != 90 {
+		t.Fatalf("clean output is %d bytes, want 90", len(idStr))
+	}
+
 	if _, err := c4.Parse(idStr); err != nil {
 		t.Fatalf("clean output is not a valid C4 ID: %v", err)
 	}
@@ -36,9 +59,9 @@ func TestCleanSmudgeRoundTrip(t *testing.T) {
 		t.Fatalf("ID mismatch:\n  got  %s\n  want %s", idStr, expectedID.String())
 	}
 
-	// Smudge: C4 ID → content
+	// Smudge: C4 ID → content (accepts bare ID)
 	var smudgeOut bytes.Buffer
-	if err := Smudge(strings.NewReader(idStr+"\n"), &smudgeOut, s); err != nil {
+	if err := Smudge(strings.NewReader(idStr), &smudgeOut, s); err != nil {
 		t.Fatal(err)
 	}
 
@@ -56,50 +79,49 @@ func TestCleanIdempotent(t *testing.T) {
 	if err := Clean(strings.NewReader(content), &out1, s); err != nil {
 		t.Fatal(err)
 	}
-	id1 := strings.TrimSpace(out1.String())
+	id1 := out1.String()
 
-	// Second clean (re-clean the ID).
+	// Second clean (re-clean the bare ID).
 	var out2 bytes.Buffer
-	if err := Clean(strings.NewReader(id1+"\n"), &out2, s); err != nil {
+	if err := Clean(strings.NewReader(id1), &out2, s); err != nil {
 		t.Fatal(err)
 	}
-	id2 := strings.TrimSpace(out2.String())
+	id2 := out2.String()
 
 	if id1 != id2 {
 		t.Fatalf("clean is not idempotent:\n  first:  %s\n  second: %s", id1, id2)
 	}
 }
 
-func TestCleanIdempotentBareID(t *testing.T) {
+func TestCleanIdempotentWithNewline(t *testing.T) {
 	s := tmpStore(t)
-	content := "bare id test"
+	content := "newline test"
 
 	var out1 bytes.Buffer
 	Clean(strings.NewReader(content), &out1, s)
-	id := strings.TrimSpace(out1.String())
+	id := out1.String()
 
-	// Re-clean with bare ID (no trailing newline).
+	// Re-clean with trailing newline (git may add one).
 	var out2 bytes.Buffer
-	if err := Clean(strings.NewReader(id), &out2, s); err != nil {
+	if err := Clean(strings.NewReader(id+"\n"), &out2, s); err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(out2.String()) != id {
-		t.Fatal("bare ID re-clean failed")
+	if out2.String() != id {
+		t.Fatalf("re-clean with newline changed ID:\n  got  %q\n  want %q", out2.String(), id)
 	}
 }
 
 func TestSmudgeMissingContent(t *testing.T) {
 	s := tmpStore(t)
-	// A valid C4 ID for content that's not in the store.
 	id := c4.Identify(strings.NewReader("not stored"))
 
 	var out bytes.Buffer
-	if err := Smudge(strings.NewReader(id.String()+"\n"), &out, s); err != nil {
+	if err := Smudge(strings.NewReader(id.String()), &out, s); err != nil {
 		t.Fatal(err)
 	}
-	// Should pass ID through as-is.
-	if strings.TrimSpace(out.String()) != id.String() {
-		t.Fatal("missing content should pass ID through")
+	// Should pass bare ID through (90 bytes, no newline).
+	if out.String() != id.String() {
+		t.Fatalf("missing content should pass bare ID through, got %q", out.String())
 	}
 }
 
@@ -117,7 +139,6 @@ func TestSmudgeInvalidInput(t *testing.T) {
 
 func TestCleanLargeContent(t *testing.T) {
 	s := tmpStore(t)
-	// 1MB of data to verify streaming works.
 	data := bytes.Repeat([]byte("ABCDEFGHIJ"), 100_000)
 
 	var out bytes.Buffer
@@ -125,14 +146,18 @@ func TestCleanLargeContent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	idStr := strings.TrimSpace(out.String())
+	if out.Len() != 90 {
+		t.Fatalf("clean output is %d bytes, want 90", out.Len())
+	}
+
+	idStr := out.String()
 	if _, err := c4.Parse(idStr); err != nil {
 		t.Fatalf("output is not a valid C4 ID: %v", err)
 	}
 
 	// Verify round-trip.
 	var smudgeOut bytes.Buffer
-	if err := Smudge(strings.NewReader(idStr+"\n"), &smudgeOut, s); err != nil {
+	if err := Smudge(strings.NewReader(idStr), &smudgeOut, s); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(smudgeOut.Bytes(), data) {

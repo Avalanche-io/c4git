@@ -2,19 +2,26 @@ package filter
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os"
 	"strings"
 
 	"github.com/Avalanche-io/c4"
-	"github.com/Avalanche-io/c4git/store"
 )
 
-// Clean reads content from r and writes the C4 ID to w, storing the original
-// content in s. If the input is already a C4 ID, it passes through unchanged.
-func Clean(r io.Reader, w io.Writer, s store.PrefixedFolder) error {
-	// Read enough to check for idempotent re-clean (ID + optional newline).
+// Store is the minimal interface the filter needs from a content store.
+type Store interface {
+	Has(id c4.ID) bool
+	Open(id c4.ID) (io.ReadCloser, error)
+	Put(r io.Reader) (c4.ID, error)
+}
+
+// Clean reads content from r and writes the bare C4 ID (exactly 90 bytes,
+// no newline) to w, storing the original content in s. If the input is
+// already a bare C4 ID, it passes through unchanged.
+func Clean(r io.Reader, w io.Writer, s Store) error {
+	// Read enough to check for idempotent re-clean.
+	// A bare C4 ID is exactly 90 bytes. Accept 90 (bare) or 91 (with newline).
 	peek := make([]byte, 92)
 	n, peekErr := io.ReadFull(r, peek)
 
@@ -22,42 +29,29 @@ func Clean(r io.Reader, w io.Writer, s store.PrefixedFolder) error {
 		idStr := strings.TrimRight(string(peek[:n]), "\n")
 		if len(idStr) == 90 {
 			if _, err := c4.Parse(idStr); err == nil {
-				fmt.Fprintln(w, idStr)
-				return nil
+				_, wErr := io.WriteString(w, idStr)
+				return wErr
 			}
 		}
 	}
 
-	// Not a C4 ID — process content through single-pass streaming.
+	// Not a C4 ID — store the content and write the bare ID (exactly 90 bytes).
 	combined := io.MultiReader(bytes.NewReader(peek[:n]), r)
 
-	tmp, err := os.CreateTemp(string(s), ".c4clean-*")
+	id, err := s.Put(combined)
 	if err != nil {
 		return err
 	}
-	tmpName := tmp.Name()
-	defer func() { os.Remove(tmpName) }() // cleanup on any error path
 
-	tee := io.TeeReader(combined, tmp)
-	id := c4.Identify(tee)
-
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-
-	if err := s.Import(id, tmpName); err != nil {
-		return err
-	}
-
-	fmt.Fprintln(w, id.String())
-	return nil
+	_, wErr := io.WriteString(w, id.String())
+	return wErr
 }
 
 // Smudge reads a C4 ID from r and writes the original content to w,
-// fetching it from s. If the content is not found, the ID is written
-// through as-is with a warning on stderr.
-func Smudge(r io.Reader, w io.Writer, s store.PrefixedFolder) error {
-	raw, err := io.ReadAll(r)
+// fetching it from s. If the content is not found, the bare ID is
+// written through as-is with a warning on stderr.
+func Smudge(r io.Reader, w io.Writer, s Store) error {
+	raw, err := io.ReadAll(io.LimitReader(r, 256))
 	if err != nil {
 		return err
 	}
@@ -72,9 +66,9 @@ func Smudge(r io.Reader, w io.Writer, s store.PrefixedFolder) error {
 
 	rc, err := s.Open(id)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "c4git: content not found for %s, passing ID through\n", idStr)
-		fmt.Fprintln(w, idStr)
-		return nil
+		os.Stderr.WriteString("c4git: content not found for " + idStr + ", passing ID through\n")
+		_, wErr := io.WriteString(w, idStr)
+		return wErr
 	}
 	defer rc.Close()
 

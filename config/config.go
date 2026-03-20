@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -41,7 +42,7 @@ func DefaultPatterns() []string {
 func Default() *Config {
 	return &Config{
 		Stores: []StoreConfig{
-			{Type: "directory", Path: ".c4/store/c4"},
+			{Type: "directory", Path: ".c4/store"},
 		},
 		Patterns: DefaultPatterns(),
 	}
@@ -62,6 +63,17 @@ func Load(dir string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// Validate checks that the config has at least one store with a non-empty path.
+func (c *Config) Validate() error {
+	if len(c.Stores) == 0 {
+		return fmt.Errorf("no stores configured")
+	}
+	if c.Stores[0].Path == "" {
+		return fmt.Errorf("store path is empty")
+	}
+	return nil
 }
 
 // Write serializes the config to .c4git.yaml in dir.

@@ -9,12 +9,12 @@ import (
 
 	"github.com/Avalanche-io/c4git/config"
 	"github.com/Avalanche-io/c4git/filter"
-	"github.com/Avalanche-io/c4git/store"
+	c4store "github.com/Avalanche-io/c4/store"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: c4git <init|clean|smudge> [file]")
+		fmt.Fprintln(os.Stderr, "usage: c4git <init|clean|smudge|status|verify|gc|version>")
 		os.Exit(1)
 	}
 
@@ -34,31 +34,65 @@ func main() {
 			fmt.Fprintf(os.Stderr, "c4git smudge: %v\n", err)
 			os.Exit(1)
 		}
+	case "status":
+		if err := runStatus(); err != nil {
+			fmt.Fprintf(os.Stderr, "c4git status: %v\n", err)
+			os.Exit(1)
+		}
+	case "verify":
+		if err := runVerify(); err != nil {
+			fmt.Fprintf(os.Stderr, "c4git verify: %v\n", err)
+			os.Exit(1)
+		}
+	case "gc":
+		force := len(os.Args) > 2 && os.Args[2] == "--force"
+		if err := runGC(force); err != nil {
+			fmt.Fprintf(os.Stderr, "c4git gc: %v\n", err)
+			os.Exit(1)
+		}
+	case "version":
+		fmt.Println("c4git 1.0.0")
 	default:
 		fmt.Fprintf(os.Stderr, "c4git: unknown command %q\n", os.Args[1])
 		os.Exit(1)
 	}
 }
 
-func runClean() error {
+func openStore() (*c4store.TreeStore, error) {
 	cfg, err := config.Load(".")
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return c4store.NewTreeStore(cfg.Stores[0].Path)
+}
+
+func runClean() error {
+	s, err := openStore()
 	if err != nil {
 		return err
 	}
-	s := store.PrefixedFolder(cfg.Stores[0].Path)
 	return filter.Clean(os.Stdin, os.Stdout, s)
 }
 
 func runSmudge() error {
-	cfg, err := config.Load(".")
+	s, err := openStore()
 	if err != nil {
 		return err
 	}
-	s := store.PrefixedFolder(cfg.Stores[0].Path)
 	return filter.Smudge(os.Stdin, os.Stdout, s)
 }
 
 func runInit() error {
+	// Check that we're inside a git repository.
+	cmd := exec.Command("git", "rev-parse", "--git-dir")
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("not a git repository (run 'git init' first)")
+	}
+
 	cfg := config.Default()
 	storePath := cfg.Stores[0].Path
 
@@ -138,6 +172,9 @@ func ensureGitattributes(path string, patterns []string) error {
 			}
 		}
 		f.Close()
+		if err := scanner.Err(); err != nil {
+			return err
+		}
 	}
 
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -179,6 +216,6 @@ func hasLine(path, s string) bool {
 			return true
 		}
 	}
+	// On scan error, conservatively return false (entry will be re-added).
 	return false
 }
-
