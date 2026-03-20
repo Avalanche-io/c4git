@@ -36,7 +36,12 @@ func testRepo(t *testing.T) (repoDir string, git func(args ...string) string, c4
 	if runtime.GOOS == "windows" {
 		pathSep = ";"
 	}
-	env := append(os.Environ(), "PATH="+binDir+pathSep+os.Getenv("PATH"))
+	// Ensure tests use repo-local store, not any global C4_STORE config.
+	env := append(os.Environ(),
+		"PATH="+binDir+pathSep+os.Getenv("PATH"),
+		"C4_STORE=",
+		"HOME="+t.TempDir(),
+	)
 
 	git = func(args ...string) string {
 		t.Helper()

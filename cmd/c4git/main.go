@@ -59,6 +59,11 @@ func main() {
 }
 
 func openStore() (*c4store.TreeStore, error) {
+	// Prefer the user's configured global store (C4_STORE / ~/.c4/config).
+	// Fall back to repo-local .c4/store if no global store is configured.
+	if s, err := c4store.OpenConfigured(); err == nil && s != nil {
+		return s, nil
+	}
 	cfg, err := config.Load(".")
 	if err != nil {
 		return nil, err
