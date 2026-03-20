@@ -58,12 +58,19 @@ func main() {
 	}
 }
 
+// openStore returns the content store, preferring the global store.
+// The quiet parameter suppresses the fallback warning (used by clean/smudge
+// which run on every git operation and shouldn't be noisy).
 func openStore() (*c4store.TreeStore, error) {
+	return openStoreQuiet(false)
+}
+
+func openStoreQuiet(quiet bool) (*c4store.TreeStore, error) {
 	// Prefer the user's configured global store (C4_STORE / ~/.c4/config).
-	// Fall back to repo-local .c4/store if no global store is configured.
 	if s, err := c4store.OpenConfigured(); err == nil && s != nil {
 		return s, nil
 	}
+	// Fall back to repo-local .c4/store.
 	cfg, err := config.Load(".")
 	if err != nil {
 		return nil, err
@@ -71,11 +78,19 @@ func openStore() (*c4store.TreeStore, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	return c4store.NewTreeStore(cfg.Stores[0].Path)
+	s, err := c4store.NewTreeStore(cfg.Stores[0].Path)
+	if err != nil {
+		return nil, err
+	}
+	if !quiet {
+		fmt.Fprintf(os.Stderr, "c4git: using repo-local store %s\n", cfg.Stores[0].Path)
+		fmt.Fprintf(os.Stderr, "       To share across repos: export C4_STORE=~/.c4/store\n")
+	}
+	return s, nil
 }
 
 func runClean() error {
-	s, err := openStore()
+	s, err := openStoreQuiet(true)
 	if err != nil {
 		return err
 	}
@@ -83,7 +98,7 @@ func runClean() error {
 }
 
 func runSmudge() error {
-	s, err := openStore()
+	s, err := openStoreQuiet(true)
 	if err != nil {
 		return err
 	}
