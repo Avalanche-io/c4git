@@ -51,7 +51,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "version":
-		fmt.Println("c4git 1.0.0")
+		fmt.Println("c4git 1.0.11")
 	default:
 		fmt.Fprintf(os.Stderr, "c4git: unknown command %q\n", os.Args[1])
 		os.Exit(1)
