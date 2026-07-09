@@ -3,6 +3,6 @@ module github.com/Avalanche-io/c4git
 go 1.16
 
 require (
-	github.com/Avalanche-io/c4 v1.0.13
+	github.com/Avalanche-io/c4 v1.0.14
 	gopkg.in/yaml.v3 v3.0.1
 )
