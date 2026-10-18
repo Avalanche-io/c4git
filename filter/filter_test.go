@@ -137,6 +137,33 @@ func TestSmudgeInvalidInput(t *testing.T) {
 	}
 }
 
+// Git runs smudge on every blob the filter attribute matches, including
+// blobs that are not pointers (committed before c4git was configured, or
+// whose clean step was skipped). Those must come out byte for byte,
+// however long they are. c4git 1.0.0 through 1.0.18 wrote only the first
+// 256 bytes of such input.
+func TestSmudgePassThroughLongerThanSniff(t *testing.T) {
+	s := tmpStore(t)
+	id := c4.Identify(strings.NewReader("stored elsewhere"))
+
+	cases := map[string][]byte{
+		"text 1000":         bytes.Repeat([]byte("a"), 1000),
+		"binary 300000":     bytes.Repeat([]byte{0, 1, 2, 0xff}, 75000),
+		"exactly 256":       bytes.Repeat([]byte("b"), 256),
+		"257":               bytes.Repeat([]byte("c"), 257),
+		"id then more text": []byte(id.String() + "\nmore content that makes this not a pointer\n" + strings.Repeat("x", 500)),
+	}
+	for name, in := range cases {
+		var out bytes.Buffer
+		if err := Smudge(bytes.NewReader(in), &out, s); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if !bytes.Equal(out.Bytes(), in) {
+			t.Fatalf("%s: pass-through changed the bytes: got %d bytes, want %d", name, out.Len(), len(in))
+		}
+	}
+}
+
 func TestCleanLargeContent(t *testing.T) {
 	s := tmpStore(t)
 	data := bytes.Repeat([]byte("ABCDEFGHIJ"), 100_000)

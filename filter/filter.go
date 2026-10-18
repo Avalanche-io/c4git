@@ -59,8 +59,13 @@ func Smudge(r io.Reader, w io.Writer, s Store) error {
 
 	id, err := c4.Parse(idStr)
 	if err != nil {
-		// Not a valid C4 ID — pass through unchanged.
-		_, wErr := w.Write(raw)
+		// Not a valid C4 ID — pass through unchanged: the sniffed bytes
+		// first, then everything that follows them. Only the first 256
+		// bytes were read, so the remainder of r must be copied too.
+		if _, wErr := w.Write(raw); wErr != nil {
+			return wErr
+		}
+		_, wErr := io.Copy(w, r)
 		return wErr
 	}
 
