@@ -41,7 +41,7 @@ Working Tree          Git Repository         Backing Store
       +----------------------------------------------|
 ```
 
-Every commit that touches a managed file stores only 90 bytes in git. The actual content lives in `.c4/store`, a local directory-based content store shared with the rest of the c4 toolkit (`c4`, `c4sh`). Because content is addressed by its C4 ID, identical files across branches, repos, or machines are automatically deduplicated.
+Every commit that touches a managed file stores only 90 bytes in git. The actual content lives in your configured content store (`C4_STORE` or `~/.c4/config`), or in the repo's `.c4/store` when none is configured: a directory-based content store shared with the rest of the c4 toolkit (`c4`, `c4sh`). Because content is addressed by its C4 ID, identical files across branches, repos, or machines are automatically deduplicated.
 
 ## Configuration
 
@@ -51,7 +51,7 @@ Every commit that touches a managed file stores only 90 bytes in git. The actual
 # .c4git.yaml
 stores:
   - type: directory
-    path: .c4/store       # Local tree store (default)
+    path: .c4/store       # Local tree store, used when no C4_STORE or ~/.c4/config store is configured
 
 # File patterns to manage via C4
 patterns:
@@ -102,7 +102,7 @@ The store at `.c4/store` is a tree store -- a content-addressed directory layout
 
 ## Design Decisions
 
-See the [FAQ](https://github.com/Avalanche-io/c4/blob/main/docs/faq.md) for design decisions including SHA-512 permanence, the c4m format, and content store scaling.
+See the [FAQ](https://github.com/Avalanche-io/c4/blob/release/1.0.x/docs/faq.md) for design decisions including SHA-512 permanence, the c4m format, and content store scaling.
 
 ## License
 
