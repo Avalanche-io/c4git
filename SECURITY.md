@@ -29,7 +29,7 @@ We take security vulnerabilities seriously. If you discover a security issue in 
 
 c4git replaces git blob content with C4 IDs and stores the original file content locally. Users should be aware:
 
-- **Store access**: The content store (`.c4/store`) holds files by C4 ID. Anyone with read access to the store directory can read any stored content. Protect the store directory with appropriate filesystem permissions.
+- **Store access**: The content store (your configured `C4_STORE` or `~/.c4/config` store, or the repo's `.c4/store` when none is configured) holds files by C4 ID. Anyone with read access to the store directory can read any stored content. Protect the store directory with appropriate filesystem permissions.
 - **`.c4git.yaml` trust**: The configuration file controls which file patterns are filtered and where content is stored. Review `.c4git.yaml` when cloning an unfamiliar repository. A malicious config could point the store path outside the repository.
 - **Store not committed**: The `.c4/` directory is added to `.gitignore` by `c4git init`. If this entry is removed, stored content could be accidentally committed to git.
 - **Content availability**: If the store is missing content for a C4 ID, the smudge filter passes the bare ID through. Files may appear as 90-byte text files until the content is available. This is by design and not a data loss event -- the ID uniquely identifies the content.
