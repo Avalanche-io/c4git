@@ -5,7 +5,7 @@
 
 Git clean/smudge filter that turns git into a media asset version control system using C4 IDs ([SMPTE ST 2114:2017](https://ieeexplore.ieee.org/document/8255805)).
 
-Large files are replaced with their 90-byte C4 ID on commit and restored from any configured store on checkout. Artists don't need to know it's happening.
+Large files are replaced with their 90-byte C4 ID on commit and restored from your content store on checkout. Artists don't need to know it's happening.
 
 ## Install
 
@@ -41,7 +41,7 @@ Working Tree          Git Repository         Backing Store
       +----------------------------------------------|
 ```
 
-Every commit that touches a managed file stores only 90 bytes in git. The actual content lives in your configured content store (`C4_STORE` or `~/.c4/config`), or in the repo's `.c4/store` when none is configured: a directory-based content store shared with the rest of the c4 toolkit (`c4`, `c4sh`). Because content is addressed by its C4 ID, identical files across branches, repos, or machines are automatically deduplicated.
+Every commit that touches a managed file stores only 90 bytes in git. The actual content lives in your configured content store (`C4_STORE` or `~/.c4/config`; c4git uses the first local path given and ignores S3 entries), or in the repo's `.c4/store` when none is configured: a directory-based content store shared with the rest of the c4 toolkit (`c4`, `c4sh`). Because content is addressed by its C4 ID, identical files across branches, repos, or machines are automatically deduplicated.
 
 ## Configuration
 
@@ -93,7 +93,7 @@ The store at `.c4/store` is a tree store -- a content-addressed directory layout
 | | c4git | git-lfs | git-annex | Perforce |
 |---|---|---|---|---|
 | Server required | No | Yes | No | Yes |
-| Storage backends | Any | LFS server | Various | P4 server |
+| Storage backends | Local directory (any mount) | LFS server | Various | P4 server |
 | Deduplication | Automatic | No | Yes | No |
 | Cross-repo sharing | Yes | No | Possible | No |
 | Complexity | Minimal | Moderate | High | High |
